@@ -21,7 +21,7 @@ import org.apache.dubbo.common.extension.SPI;
 /**
  * Compiler. (SPI, Singleton, ThreadSafe)
  */
-@SPI("javassist")
+@SPI("javassist")   // 指定默认编译器为javassist实现
 public interface Compiler {
 
     /**

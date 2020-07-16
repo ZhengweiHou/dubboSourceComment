@@ -481,18 +481,25 @@ public class ExtensionLoader<T> {
     }
 
     @SuppressWarnings("unchecked")
+
+
+    // 获得自适应扩展入口 FIXME
     public T getAdaptiveExtension() {
+        // 从缓存中获取自适应扩展
         Object instance = cachedAdaptiveInstance.get();
         if (instance == null) {
-            if (createAdaptiveInstanceError == null) {
+            // 未命中缓存
+            if (createAdaptiveInstanceError == null) {  // 若创建失败过，这里中断创建过程
                 synchronized (cachedAdaptiveInstance) {
                     instance = cachedAdaptiveInstance.get();
                     if (instance == null) {
                         try {
+                            // 创建自适应扩展
                             instance = createAdaptiveExtension();
+                            // 添加自适应扩展到缓存中
                             cachedAdaptiveInstance.set(instance);
                         } catch (Throwable t) {
-                            createAdaptiveInstanceError = t;
+                            createAdaptiveInstanceError = t;    // 创建异常后，记录下来，中断下次创建步骤，直接返回异常
                             throw new IllegalStateException("Failed to create adaptive instance: " + t.toString(), t);
                         }
                     }
@@ -637,6 +644,7 @@ public class ExtensionLoader<T> {
         return getExtensionClasses().get(name);
     }
 
+    // 很多地方会调用这个方法用于初始化扩展类映射表，所以这个方法要考虑多线程安全情况（用了双重检查的操作屏蔽多线程同时操作cachedClasses）
     private Map<String, Class<?>> getExtensionClasses() {
         // 从缓存中获取已加载的扩展类映射表
         Map<String, Class<?>> classes = cachedClasses.get();
@@ -771,7 +779,7 @@ public class ExtensionLoader<T> {
         }
 
         if (clazz.isAnnotationPresent(Adaptive.class)) {
-            // 检测目标类上是否有 Adaptive 注解  （Adaptive注解是什么作用？）
+            // 检测目标类上是否有 Adaptive 注解  （Adaptive注解是什么作用？自适应扩展注解）
             cacheAdaptiveClass(clazz);
         } else if (isWrapperClass(clazz)) {
             // 检测目标类是否是Wrapper类：clazz包含目标类型(type)构造参数的构造器。初始化cachedWrapperClasses
@@ -846,8 +854,10 @@ public class ExtensionLoader<T> {
      */
     private void cacheAdaptiveClass(Class<?> clazz) {
         if (cachedAdaptiveClass == null) {
+            // 当前遍历类被Adaptive注解修饰，那这个类就是自适应扩展类
             cachedAdaptiveClass = clazz;
         } else if (!cachedAdaptiveClass.equals(clazz)) {
+            // 一个接口最多只能有一个扩展实现类
             throw new IllegalStateException("More than 1 adaptive class found: "
                     + cachedAdaptiveClass.getClass().getName()
                     + ", " + clazz.getClass().getName());
@@ -894,8 +904,14 @@ public class ExtensionLoader<T> {
     }
 
     @SuppressWarnings("unchecked")
+    // 创建自适应扩展
     private T createAdaptiveExtension() {
         try {
+            /**
+             * 获取自适应扩展类，并实例化，进行依赖注入
+             * 自适应扩展分两种：1. 手工编码的；2. 自动生成的
+             * 自动生成的不会有依赖其他类的情况，而手动编码的就可能存在依赖情况，所以这里进行了依赖注入操作
+             */
             return injectExtension((T) getAdaptiveExtensionClass().newInstance());
         } catch (Exception e) {
             throw new IllegalStateException("Can't create adaptive extension " + type + ", cause: " + e.getMessage(), e);
@@ -903,17 +919,28 @@ public class ExtensionLoader<T> {
     }
 
     private Class<?> getAdaptiveExtensionClass() {
-        getExtensionClasses();
+        getExtensionClasses();  // 通过SPI加载当前Loader中Type的所有实现类
+        // FIXME 注意：上面这个方法里会处理Adaptive注解，若某个实现类被Adaptive修饰，那么该类就会被赋给cachedAdaptiveClass，那下面的if条件就成立了
         if (cachedAdaptiveClass != null) {
+            // 若已缓存则直接返回缓存，若存在手写的自定义扩展，通过上面的处理，就能走到这里
             return cachedAdaptiveClass;
         }
+        // 走到这里，说明需要自动生成自适应扩展类
+        // 创建自适应扩展类，并缓存
         return cachedAdaptiveClass = createAdaptiveExtensionClass();
     }
 
     private Class<?> createAdaptiveExtensionClass() {
+
+        // 通过自适应扩展代码生成器生成目标代码
         String code = new AdaptiveClassCodeGenerator(type, cachedDefaultName).generate();
+
         ClassLoader classLoader = findClassLoader();
+        // 获取编译器实现类（获取自适应扩展实现类)
+        /**@see org.apache.dubbo.common.compiler.support.AdaptiveCompiler*/
         org.apache.dubbo.common.compiler.Compiler compiler = ExtensionLoader.getExtensionLoader(org.apache.dubbo.common.compiler.Compiler.class).getAdaptiveExtension();
+
+        // 通过编译器实现类，编译生成的代码，生成Class
         return compiler.compile(code, classLoader);
     }
 

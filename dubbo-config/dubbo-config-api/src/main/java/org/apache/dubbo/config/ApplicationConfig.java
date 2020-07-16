@@ -271,7 +271,7 @@ public class ApplicationConfig extends AbstractConfig {
 
     public void setCompiler(String compiler) {
         this.compiler = compiler;
-        AdaptiveCompiler.setDefaultCompiler(compiler);
+        AdaptiveCompiler.setDefaultCompiler(compiler);  // 设置自适应编译器使用的目标Compiler扩展类name
     }
 
     public String getLogger() {

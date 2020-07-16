@@ -85,20 +85,21 @@ public class AdaptiveClassCodeGenerator {
      */
     public String generate() {
         // no need to generate adaptive class since there's no adaptive method found.
-        if (!hasAdaptiveMethod()) {
+        if (!hasAdaptiveMethod()) { // 判断是否存在Adaptive注解修饰的方法，若没有则抛异常（没有adaptive你取个啥？？）
             throw new IllegalStateException("No adaptive method exist on extension " + type.getName() + ", refuse to create the adaptive class!");
         }
 
+        // 生成类代码
         StringBuilder code = new StringBuilder();
-        code.append(generatePackageInfo());
-        code.append(generateImports());
-        code.append(generateClassDeclaration());
+        code.append(generatePackageInfo());         // package 包名;
+        code.append(generateImports());             // imports 内容;
+        code.append(generateClassDeclaration());    // public class oldname$Adaptive implements ... {
         
         Method[] methods = type.getMethods();
         for (Method method : methods) {
-            code.append(generateMethod(method));
-        }
-        code.append("}");
+            code.append(generateMethod(method));    // 方法  public %s %s(%s) %s {\n%s}\n
+    }
+        code.append("}");                           // 结束
         
         if (logger.isDebugEnabled()) {
             logger.debug(code.toString());
@@ -155,7 +156,7 @@ public class AdaptiveClassCodeGenerator {
     private String generateMethod(Method method) {
         String methodReturnType = method.getReturnType().getCanonicalName();
         String methodName = method.getName();
-        String methodContent = generateMethodContent(method);
+        String methodContent = generateMethodContent(method);   // 方法体内容
         String methodArgs = generateMethodArguments(method);
         String methodThrows = generateMethodThrows(method);
         return String.format(CODE_METHOD_DECLARATION, methodReturnType, methodName, methodArgs, methodThrows, methodContent);
@@ -198,26 +199,35 @@ public class AdaptiveClassCodeGenerator {
         Adaptive adaptiveAnnotation = method.getAnnotation(Adaptive.class);
         StringBuilder code = new StringBuilder(512);
         if (adaptiveAnnotation == null) {
-            return generateUnsupported(method);
+            return generateUnsupported(method); // 没有Adaptive注解的方法不支持自适应扩展，若通过自适应扩展类调用这些方法，就直接抛异常
         } else {
+            // 获取方法参数中，URL参数所在的位置
             int urlTypeIndex = getUrlTypeIndex(method);
             
             // found parameter in URL type
             if (urlTypeIndex != -1) {
                 // Null Point check
+                // 方法参数中存在URL，生成该参数的非空验证代码
                 code.append(generateUrlNullCheck(urlTypeIndex));
             } else {
                 // did not find parameter in URL type
+                // 若方法参数中不存在URL， what？？没有URL？ 不行我要找找你们谁口袋里藏着URL了，如果将所有方法参数类搜身都找不到，那就要报警了！
+                // 遍历方法参数类寻找所有getter方法，看是否有无参getter方法返回了URL，若有则生成校验该getter返回值不为空的代码（一旦找到就中断）;若找不到则这里抛异常
                 code.append(generateUrlAssignmentIndirectly(method));
             }
 
+            // Adaptive注解配置多个value值？？
             String[] value = getMethodAdaptiveValue(adaptiveAnnotation);
 
+            // 方法参数类型是否包含org.apache.dubbo.rpc.Invocation TODO Invocation是干嘛的？
             boolean hasInvocation = hasInvocationArgument(method);
-            
+
+            // 生成Invocation类型参数，判空逻辑
             code.append(generateInvocationArgumentNullCheck(method));
-            
+
+            // 生成拓展名获取逻辑
             code.append(generateExtNameAssignment(value, hasInvocation));
+
             // check extName == null?
             code.append(generateExtNameNullCheck(value));
             
@@ -245,35 +255,46 @@ public class AdaptiveClassCodeGenerator {
         String getNameCode = null;
         for (int i = value.length - 1; i >= 0; --i) {
             if (i == value.length - 1) {
+                // 数组最后一个，第一个执行
                 if (null != defaultExtName) {
                     if (!"protocol".equals(value[i])) {
                         if (hasInvocation) {
+                            // url.getMethodParameter(String method, String key, String defaultValue)
                             getNameCode = String.format("url.getMethodParameter(methodName, \"%s\", \"%s\")", value[i], defaultExtName);
                         } else {
+                            // url.getParameter(String key, String defaultValue)
                             getNameCode = String.format("url.getParameter(\"%s\", \"%s\")", value[i], defaultExtName);
                         }
                     } else {
+                        // ( url.getProtocol() == null ? defaultExtName : url.getProtocol() )
                         getNameCode = String.format("( url.getProtocol() == null ? \"%s\" : url.getProtocol() )", defaultExtName);
                     }
                 } else {
                     if (!"protocol".equals(value[i])) {
                         if (hasInvocation) {
+
+                            // url.getMethodParameter(String method, String key, null)
                             getNameCode = String.format("url.getMethodParameter(methodName, \"%s\", \"%s\")", value[i], defaultExtName);
                         } else {
+                            // url.getParameter(String key)
                             getNameCode = String.format("url.getParameter(\"%s\")", value[i]);
                         }
                     } else {
+                        // url.getProtocol()
                         getNameCode = "url.getProtocol()";
                     }
                 }
             } else {
                 if (!"protocol".equals(value[i])) {
                     if (hasInvocation) {
+                        // url.getMethodParameter(String method, String key, String defaultValue)
                         getNameCode = String.format("url.getMethodParameter(methodName, \"%s\", \"%s\")", value[i], defaultExtName);
                     } else {
+                        // url.getParameter(String key, String defaultValue)
                         getNameCode = String.format("url.getParameter(\"%s\", %s)", value[i], getNameCode);
                     }
                 } else {
+                    // ( url.getProtocol() == null ? (..getNameCode..) : url.getProtocol() )
                     getNameCode = String.format("url.getProtocol() == null ? (%s) : url.getProtocol()", getNameCode);
                 }
             }
@@ -314,8 +335,8 @@ public class AdaptiveClassCodeGenerator {
     private String generateInvocationArgumentNullCheck(Method method) {
         Class<?>[] pts = method.getParameterTypes();
         return IntStream.range(0, pts.length).filter(i -> CLASSNAME_INVOCATION.equals(pts[i].getName()))
-                        .mapToObj(i -> String.format(CODE_INVOCATION_ARGUMENT_NULL_CHECK, i, i))
-                        .findFirst().orElse("");
+                        .mapToObj(i -> String.format(CODE_INVOCATION_ARGUMENT_NULL_CHECK, i, i))    // 生成Invocation判空语句
+                        .findFirst().orElse(""); // 只取第一个？？
     }
 
     /**
