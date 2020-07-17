@@ -226,7 +226,8 @@ public class AdaptiveClassCodeGenerator {
             code.append(generateInvocationArgumentNullCheck(method));
 
             // 生成拓展名获取逻辑
-            code.append(generateExtNameAssignment(value, hasInvocation));
+            // String extName = url.getxxxx(...)
+             code.append(generateExtNameAssignment(value, hasInvocation));
 
             // check extName == null?
             code.append(generateExtNameNullCheck(value));
@@ -253,52 +254,84 @@ public class AdaptiveClassCodeGenerator {
     private String generateExtNameAssignment(String[] value, boolean hasInvocation) {
         // TODO: refactor it
         String getNameCode = null;
-        for (int i = value.length - 1; i >= 0; --i) {
-            if (i == value.length - 1) {
-                // 数组最后一个，第一个执行
-                if (null != defaultExtName) {
-                    if (!"protocol".equals(value[i])) {
-                        if (hasInvocation) {
-                            // url.getMethodParameter(String method, String key, String defaultValue)
-                            getNameCode = String.format("url.getMethodParameter(methodName, \"%s\", \"%s\")", value[i], defaultExtName);
-                        } else {
-                            // url.getParameter(String key, String defaultValue)
-                            getNameCode = String.format("url.getParameter(\"%s\", \"%s\")", value[i], defaultExtName);
-                        }
-                    } else {
-                        // ( url.getProtocol() == null ? defaultExtName : url.getProtocol() )
-                        getNameCode = String.format("( url.getProtocol() == null ? \"%s\" : url.getProtocol() )", defaultExtName);
-                    }
-                } else {
-                    if (!"protocol".equals(value[i])) {
-                        if (hasInvocation) {
 
-                            // url.getMethodParameter(String method, String key, null)
-                            getNameCode = String.format("url.getMethodParameter(methodName, \"%s\", \"%s\")", value[i], defaultExtName);
-                        } else {
-                            // url.getParameter(String key)
-                            getNameCode = String.format("url.getParameter(\"%s\")", value[i]);
-                        }
-                    } else {
-                        // url.getProtocol()
+        // refactor by houzw  TODO Can it be refactored better?
+        // 原逻辑复杂且不好阅读，这里重构一下便于理解
+        for (int i = value.length - 1; i >= 0; --i) {
+            boolean isLastOne = (i == value.length - 1);
+            if ("protocol".equals(value[i])) {
+                // value = protocol
+                if (isLastOne){
+                    if (null != defaultExtName){
+                        getNameCode = String.format("( url.getProtocol() == null ? \"%s\" : url.getProtocol() )", defaultExtName);
+                    }else{
                         getNameCode = "url.getProtocol()";
                     }
+                }else{
+                    getNameCode = String.format("url.getProtocol() == null ? (%s) : url.getProtocol()", getNameCode);
                 }
-            } else {
-                if (!"protocol".equals(value[i])) {
-                    if (hasInvocation) {
-                        // url.getMethodParameter(String method, String key, String defaultValue)
-                        getNameCode = String.format("url.getMethodParameter(methodName, \"%s\", \"%s\")", value[i], defaultExtName);
-                    } else {
-                        // url.getParameter(String key, String defaultValue)
+            }else{
+                if (hasInvocation){
+                    getNameCode = String.format("url.getMethodParameter(methodName, \"%s\", \"%s\")", value[i], defaultExtName);
+                }else{
+                    if (isLastOne){
+                        if (null != defaultExtName) {
+                            getNameCode = String.format("url.getParameter(\"%s\", \"%s\")", value[i], defaultExtName);
+                        }else{
+                            getNameCode = String.format("url.getParameter(\"%s\")", value[i]);
+                        }
+                    }else{
                         getNameCode = String.format("url.getParameter(\"%s\", %s)", value[i], getNameCode);
                     }
-                } else {
-                    // ( url.getProtocol() == null ? (..getNameCode..) : url.getProtocol() )
-                    getNameCode = String.format("url.getProtocol() == null ? (%s) : url.getProtocol()", getNameCode);
                 }
             }
         }
+
+//        for (int i = value.length - 1; i >= 0; --i) {
+//            if (i == value.length - 1) {
+//                // 数组最后一个，第一个执行
+//                if (null != defaultExtName) {
+//                    if (!"protocol".equals(value[i])) {
+//                        if (hasInvocation) {
+//                            // url.getMethodParameter(String method, String key, String defaultValue)
+//                            getNameCode = String.format("url.getMethodParameter(methodName, \"%s\", \"%s\")", value[i], defaultExtName);
+//                        } else {
+//                            // url.getParameter(String key, String defaultValue)
+//                            getNameCode = String.format("url.getParameter(\"%s\", \"%s\")", value[i], defaultExtName);
+//                        }
+//                    } else {
+//                        // ( url.getProtocol() == null ? defaultExtName : url.getProtocol() )
+//                        getNameCode = String.format("( url.getProtocol() == null ? \"%s\" : url.getProtocol() )", defaultExtName);
+//                    }
+//                } else {
+//                    if (!"protocol".equals(value[i])) {
+//                        if (hasInvocation) {
+//                            // url.getMethodParameter(String method, String key, null)
+//                            getNameCode = String.format("url.getMethodParameter(methodName, \"%s\", \"%s\")", value[i], defaultExtName);
+//                        } else {
+//                            // url.getParameter(String key)
+//                            getNameCode = String.format("url.getParameter(\"%s\")", value[i]);
+//                        }
+//                    } else {
+//                        // url.getProtocol()
+//                        getNameCode = "url.getProtocol()";
+//                    }
+//                }
+//            } else {
+//                if (!"protocol".equals(value[i])) {
+//                    if (hasInvocation) {
+//                        // url.getMethodParameter(String method, String key, String defaultValue)
+//                        getNameCode = String.format("url.getMethodParameter(methodName, \"%s\", \"%s\")", value[i], defaultExtName);
+//                    } else {
+//                        // url.getParameter(String key, String defaultValue)
+//                        getNameCode = String.format("url.getParameter(\"%s\", %s)", value[i], getNameCode);
+//                    }
+//                } else {
+//                    // ( url.getProtocol() == null ? (..getNameCode..) : url.getProtocol() )
+//                    getNameCode = String.format("url.getProtocol() == null ? (%s) : url.getProtocol()", getNameCode);
+//                }
+//            }
+//        }
         
         return String.format(CODE_EXT_NAME_ASSIGNMENT, getNameCode);
     }

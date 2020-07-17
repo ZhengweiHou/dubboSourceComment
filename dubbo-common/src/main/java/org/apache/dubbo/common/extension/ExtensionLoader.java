@@ -936,8 +936,10 @@ public class ExtensionLoader<T> {
         String code = new AdaptiveClassCodeGenerator(type, cachedDefaultName).generate();
 
         ClassLoader classLoader = findClassLoader();
+
         // 获取编译器实现类（获取自适应扩展实现类)
         /**@see org.apache.dubbo.common.compiler.support.AdaptiveCompiler*/
+
         org.apache.dubbo.common.compiler.Compiler compiler = ExtensionLoader.getExtensionLoader(org.apache.dubbo.common.compiler.Compiler.class).getAdaptiveExtension();
 
         // 通过编译器实现类，编译生成的代码，生成Class
